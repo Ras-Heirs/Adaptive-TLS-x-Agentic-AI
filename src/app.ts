@@ -1,7 +1,8 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
 
@@ -19,13 +20,12 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-app.use((err: any, req: Request, res: Response, next: any) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
-  });
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const error: any = new Error(`Endpoint ${req.originalUrl} tidak ditemukan`);
+  error.statusCode = 404;
+  next(error);
 });
+
+app.use(errorHandler);
 
 export default app;
