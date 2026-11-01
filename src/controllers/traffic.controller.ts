@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
 import { sensorInputSchema, overrideInputSchema } from '../validators/traffic.validator';
 
-// 1. Ambil status seluruh persimpangan beserta kondisi lampu & data terbaru
+// Ambil status seluruh persimpangan beserta kondisi lampu & data terbaru
 export const getIntersections = async (_req: Request, res: Response): Promise<void> => {
     try {
         const intersections = await prisma.intersection.findMany({
@@ -35,7 +35,7 @@ export const getIntersections = async (_req: Request, res: Response): Promise<vo
     }
 };
 
-// 2. Terima data sensor baru
+// Terima data sensor baru
 export const receiveSensorData = async (req: Request, res: Response): Promise<void> => {
     try {
         const parsed = sensorInputSchema.safeParse(req.body);
@@ -93,7 +93,7 @@ export const receiveSensorData = async (req: Request, res: Response): Promise<vo
     }
 };
 
-// 3. Manual Override oleh Operator
+// Manual Override oleh Operator
 export const manualOverride = async (req: Request, res: Response): Promise<void> => {
     try {
         const parsed = overrideInputSchema.safeParse(req.body);
@@ -178,7 +178,7 @@ export const manualOverride = async (req: Request, res: Response): Promise<void>
     }
 };
 
-// 4. Ambil riwayat Audit Log & Pesan Antar-Agen
+// riwayat Audit Log & Pesan Antar-Agen
 export const getSystemLogs = async (_req: Request, res: Response): Promise<void> => {
     try {
         const [auditLogs, agentMessages] = await Promise.all([
