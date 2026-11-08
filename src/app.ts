@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { errorHandler } from './middleware/errorHandler';
+import trafficRoutes from './routes/traffic.routes';
 
 dotenv.config();
 
@@ -19,6 +20,8 @@ app.get('/api/health', (req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+app.use('/api', trafficRoutes);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const error: any = new Error(`Endpoint ${req.originalUrl} tidak ditemukan`);
