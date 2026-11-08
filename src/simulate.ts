@@ -1,53 +1,41 @@
-import { IntersectionAgent } from './agents/intersectionAgent';
-import { TrafficLight } from './models/trafficLight';
+import { TrafficService } from './services/trafficService';
 import prisma from './config/database';
 
-async function runPhase5And6Test() {
+async function runPhase7Test() {
   console.log("==========================================");
-  console.log(" SYSTEM BOOT: MohammadAriqHaqi_2406431271 ");
+  console.log(" SYSTEM BOOT: Adaptive-TLS-x-Agentic-AI  ");
   console.log("==========================================");
-  console.log("Menguji Phase 5 (SafetyGuard) & Phase 6 (TrafficLight)...\n");
+  console.log("Menguji Phase 7 (Multi-Agent Messenger, AuditLogger & TrafficService)...\n");
 
   try {
-    // 1. Uji Validate Normal & setGreen() pada Simpang A
-    console.log("1️⃣ [TEST VALIDATE & SET_GREEN] Simpang A (30 Kendaraan)");
-    const res1 = await IntersectionAgent.processSensorData({
+    // 1. Simpang A mengalami kemacetan kritis -> otomatis kirim pesan ke B
+    console.log("1️⃣ [SIMPANG A] Kemacetan Kritis (70 Kendaraan)");
+    const resA = await TrafficService.handleSensorInput({
       intersectionId: 'A',
-      vehicleCount: 30,
+      vehicleCount: 70,
     });
-    console.log("Hasil A:", res1.newGreenDuration, "detik | Warna:", res1.lightColor, "| Source:", res1.decisionSource);
-    const stateB = await TrafficLight.getState('B');
-    console.log("State Simpang B otomatis menjadi:", stateB?.color);
-    console.log("------------------------------------------");
+    console.log(`>> Durasi A: ${resA.newGreenDuration}s | Kirim Alert ke-${resA.targetNeighborId}: ${resA.neighborNotified}\n`);
 
-    // 2. Uji Manual Override (melebihi batas aman 120s -> harus di-clamp ke 90s)
-    console.log("2️⃣ [TEST OVERRIDE + CLAMPING] Operator meminta 120 detik di Simpang B");
-    const res2 = await IntersectionAgent.processSensorData({
+    // 2. Simpang B merespons alert dari Simpang A
+    console.log("2️⃣ [SIMPANG B] Lalu Lintas Normal (20 Kendaraan) + Menerima Koordinasi dari A");
+    const resB = await TrafficService.handleSensorInput({
       intersectionId: 'B',
-      vehicleCount: 15,
-      overrideDuration: 120,
-      overrideReason: 'Prioritas iring-iringan ambulans',
+      vehicleCount: 20,
     });
-    console.log("Hasil Override:", res2.newGreenDuration, "detik | Alasan:", res2.decisionReason);
-    const stateA = await TrafficLight.getState('A');
-    console.log("State Simpang A otomatis dikunci ke:", stateA?.color);
-    console.log("------------------------------------------");
+    console.log(`>> Durasi B: ${resB.newGreenDuration}s | Alasan: ${resB.decisionReason}\n`);
 
-    // 3. Uji Fallback Rule (Sensor Error / Anomali negatif)
-    console.log("3️⃣ [TEST FALLBACK RULE] Sensor Simpang A error mengirim -99 kendaraan");
-    const res3 = await IntersectionAgent.processSensorData({
-      intersectionId: 'A',
-      vehicleCount: -99,
-    });
-    console.log("Hasil Fallback:", res3.newGreenDuration, "detik | Source:", res3.decisionSource);
-    console.log("Alasan:", res3.decisionReason);
-    console.log("------------------------------------------");
+    // 3. Cek Status Sistem & Pesan Antar-Agen melalui TrafficService
+    const messages = await TrafficService.getAgentMessages(2);
+    console.log("3️⃣ [AGENT MESSAGES] Status pesan terakhir:", messages[0]?.status);
 
+    const logs = await TrafficService.getAuditLogs(2);
+    console.log("4️⃣ [AUDIT LOGS] Jumlah log terbaru terambil:", logs.length);
+    console.log("------------------------------------------");
   } catch (error) {
-    console.error("❌ Error saat pengujian:", error);
+    console.error("❌ Error saat pengujian Phase 7:", error);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-runPhase5And6Test();
+runPhase7Test();

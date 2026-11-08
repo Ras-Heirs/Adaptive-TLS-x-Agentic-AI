@@ -2,13 +2,15 @@ import prisma from '../config/database';
 import { SensorInput, AgentProcessResult, ValidatedDecision } from '../types/agent.types';
 import { DecisionEngine } from './decisionEngine';
 import { SafetyGuard } from './safetyGuard';
+import { AgentMessenger } from './agentMessenger';
 import { TrafficLight } from '../models/trafficLight';
+import { AuditLogger } from '../utils/auditLogger';
 
 export class IntersectionAgent {
   public static async processSensorData(input: SensorInput): Promise<AgentProcessResult> {
     const { intersectionId, vehicleCount, overrideDuration, overrideReason } = input;
 
-    // Pastikan simpang terdaftar di database
+    // 1. Pastikan simpang terdaftar di database
     const intersection = await prisma.intersection.findUnique({
       where: { id: intersectionId },
       include: { trafficLightState: true },
@@ -21,14 +23,7 @@ export class IntersectionAgent {
     const previousDuration = intersection.trafficLightState?.greenDuration ?? 30;
 
     // Cek apakah ada pesan CONGESTION_ALERT dari simpang tetangga
-    const pendingAlerts = await prisma.agentMessage.findMany({
-      where: {
-        receiverId: intersectionId,
-        messageType: 'CONGESTION_ALERT',
-        status: 'PENDING',
-      },
-    });
-
+    const pendingAlerts = await AgentMessenger.getPendingAlerts(intersectionId);
     const hasNeighborAlert = pendingAlerts.length > 0;
 
     // Evaluasi Keputusan (Validate / Override / Fallback)
@@ -61,7 +56,6 @@ export class IntersectionAgent {
 
     // Simpan seluruh perubahan & jalankan TrafficLight.setGreen()
     const updatedLight = await prisma.$transaction(async (tx) => {
-      // Simpan data sensor
       const sensorRecord = await tx.sensorData.create({
         data: {
           intersectionId,
@@ -69,7 +63,6 @@ export class IntersectionAgent {
         },
       });
 
-      // Simpan riwayat keputusan
       const decisionRecord = await tx.decision.create({
         data: {
           intersectionId,
@@ -79,44 +72,27 @@ export class IntersectionAgent {
         },
       });
 
-      //  Panggil TrafficLight.setGreen() untuk mengubah lampu & mengunci lampu tetangga
       const lightState = await TrafficLight.setGreen(
         intersectionId,
         validatedDecision.finalDuration,
         tx
       );
 
-      // Tandai pesan dari tetangga sudah diproses
       if (hasNeighborAlert) {
-        await tx.agentMessage.updateMany({
-          where: {
-            receiverId: intersectionId,
-            status: 'PENDING',
-          },
-          data: { status: 'PROCESSED' },
-        });
+        await AgentMessenger.acknowledgeAlerts(intersectionId, tx);
       }
 
-      // Kirim pesan ke simpang tetangga jika kemacetan kritis
       if (shouldNotifyNeighbor) {
-        await tx.agentMessage.create({
-          data: {
-            senderId: intersectionId,
-            receiverId: targetNeighborId,
-            messageType: 'CONGESTION_ALERT',
-            payload: {
-              vehicleCount: safeVehicleCount,
-              congestionLevel,
-              recommendedAction: 'REDUCE_OUTFLOW',
-            },
-            status: 'PENDING',
-          },
-        });
+        await AgentMessenger.sendCongestionAlert(
+          intersectionId,
+          safeVehicleCount,
+          congestionLevel,
+          tx
+        );
       }
 
-      // Catat ke Audit Log
-      await tx.auditLog.create({
-        data: {
+      await AuditLogger.log(
+        {
           action: `TRAFFIC_LIGHT_${validatedDecision.source}`,
           entityType: 'INTERSECTION',
           entityId: intersectionId,
@@ -129,9 +105,11 @@ export class IntersectionAgent {
             decisionSource: validatedDecision.source,
             wasClampedBySafetyGuard: validatedDecision.wasClamped,
             coordinatedWithNeighbor: hasNeighborAlert,
+            neighborNotified: shouldNotifyNeighbor,
           },
         },
-      });
+        tx
+      );
 
       return lightState;
     });

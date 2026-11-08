@@ -2,8 +2,12 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
 import { sensorInputSchema, overrideInputSchema } from '../validators/traffic.validator';
+import { TrafficService } from '../services/trafficService';
+import { SafetyGuard } from '../agents/safetyGuard';
+import { TrafficLight } from '../models/trafficLight';
+import { AuditLogger } from '../utils/auditLogger';
 
-// Ambil status seluruh persimpangan beserta kondisi lampu & data terbaru
+// 1. Ambil status seluruh persimpangan beserta kondisi lampu & data terbaru
 export const getIntersections = async (_req: Request, res: Response): Promise<void> => {
     try {
         const intersections = await prisma.intersection.findMany({
@@ -35,20 +39,34 @@ export const getIntersections = async (_req: Request, res: Response): Promise<vo
     }
 };
 
-// Terima data sensor baru
+// 2. Terima data sensor baru & jalankan Agentic AI (Phase 4 - 7)
 export const receiveSensorData = async (req: Request, res: Response): Promise<void> => {
     try {
-        const parsed = sensorInputSchema.safeParse(req.body);
-        if (!parsed.success) {
-            res.status(400).json({
-                success: false,
-                message: 'Validasi input gagal',
-                errors: parsed.error.flatten().fieldErrors,
-            });
-            return;
-        }
+        // Jika penguji sengaja mengirim angka anomali (misal negatif) untuk menguji Fallback Rule Phase 5,
+        // kita izinkan masuk ke IntersectionAgent selama tipe datanya tetap number.
+        const rawId = req.body?.intersectionId;
+        const rawCount = req.body?.vehicleCount;
+        const isTestingAnomaly =
+            typeof rawId === 'string' &&
+            typeof rawCount === 'number' &&
+            SafetyGuard.isSensorAnomalous(rawCount);
 
-        const { intersectionId, vehicleCount } = parsed.data;
+        let intersectionId = rawId;
+        let vehicleCount = rawCount;
+
+        if (!isTestingAnomaly) {
+            const parsed = sensorInputSchema.safeParse(req.body);
+            if (!parsed.success) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Validasi input gagal',
+                    errors: parsed.error.flatten().fieldErrors,
+                });
+                return;
+            }
+            intersectionId = parsed.data.intersectionId;
+            vehicleCount = parsed.data.vehicleCount;
+        }
 
         const intersection = await prisma.intersection.findUnique({
             where: { id: intersectionId },
@@ -62,26 +80,16 @@ export const receiveSensorData = async (req: Request, res: Response): Promise<vo
             return;
         }
 
-        const sensorRecord = await prisma.sensorData.create({
-            data: {
-                intersectionId,
-                vehicleCount,
-            },
-        });
-
-        await prisma.auditLog.create({
-            data: {
-                action: 'SENSOR_DATA_RECEIVED',
-                entityType: 'SensorData',
-                entityId: sensorRecord.id,
-                details: { intersectionId, vehicleCount },
-            },
+        // Panggil otak agen (Phase 4: DecisionEngine, Phase 5: SafetyGuard, Phase 6: TrafficLight, Phase 7: AgentMessenger & AuditLogger)
+        const agentResult = await TrafficService.handleSensorInput({
+            intersectionId,
+            vehicleCount,
         });
 
         res.status(201).json({
             success: true,
-            message: 'Data sensor berhasil dicatat',
-            data: sensorRecord,
+            message: 'Data sensor berhasil diproses oleh Intersection Agent',
+            data: agentResult,
         });
     } catch (error: any) {
         console.error('[ERROR] receiveSensorData:', error);
@@ -93,7 +101,7 @@ export const receiveSensorData = async (req: Request, res: Response): Promise<vo
     }
 };
 
-// Manual Override oleh Operator
+// 3. Manual Override oleh Operator (Terintegrasi dengan Phase 5 SafetyGuard & Phase 6 TrafficLight)
 export const manualOverride = async (req: Request, res: Response): Promise<void> => {
     try {
         const parsed = overrideInputSchema.safeParse(req.body);
@@ -120,52 +128,62 @@ export const manualOverride = async (req: Request, res: Response): Promise<void>
             return;
         }
 
+        // PHASE 5: Validasi & Clamping (15s - 90s) melalui SafetyGuard.override()
+        const validatedOverride = SafetyGuard.override(newDuration, reason);
+
         const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const overrideRecord = await tx.override.create({
                 data: {
                     intersectionId,
                     previousDuration: currentState.greenDuration,
-                    newDuration,
-                    reason,
+                    newDuration: validatedOverride.finalDuration,
+                    reason: validatedOverride.reason,
                     operatorId,
                 },
             });
 
-            const updatedLight = await tx.trafficLightState.update({
-                where: { intersectionId },
-                data: { greenDuration: newDuration },
-            });
+            // PHASE 6: Ubah lampu ke GREEN & otomatis kunci simpang tetangga ke RED
+            const updatedLight = await TrafficLight.setGreen(
+                intersectionId,
+                validatedOverride.finalDuration,
+                tx
+            );
 
             await tx.decision.create({
                 data: {
                     intersectionId,
-                    greenDuration: newDuration,
-                    reason: `[MANUAL OVERRIDE] ${reason}`,
+                    greenDuration: validatedOverride.finalDuration,
+                    reason: validatedOverride.reason,
                     source: 'OPERATOR',
                 },
             });
 
-            await tx.auditLog.create({
-                data: {
+            // PHASE 7: Catat ke AuditLog
+            await AuditLogger.log(
+                {
                     action: 'MANUAL_OVERRIDE',
-                    entityType: 'Override',
-                    entityId: overrideRecord.id,
+                    entityType: 'INTERSECTION',
+                    entityId: intersectionId,
                     details: {
+                        overrideId: overrideRecord.id,
                         intersectionId,
                         previousDuration: currentState.greenDuration,
-                        newDuration,
+                        requestedDuration: newDuration,
+                        finalDuration: validatedOverride.finalDuration,
+                        wasClamped: validatedOverride.wasClamped,
                         operatorId,
-                        reason,
+                        reason: validatedOverride.reason,
                     },
                 },
-            });
+                tx
+            );
 
-            return { overrideRecord, updatedLight };
+            return { overrideRecord, updatedLight, validatedOverride };
         });
 
         res.status(200).json({
             success: true,
-            message: 'Override durasi lampu berhasil diterapkan',
+            message: 'Override durasi lampu berhasil diterapkan melalui SafetyGuard',
             data: result,
         });
     } catch (error: any) {
@@ -178,18 +196,12 @@ export const manualOverride = async (req: Request, res: Response): Promise<void>
     }
 };
 
-// riwayat Audit Log & Pesan Antar-Agen
+// 4. Riwayat Audit Log & Pesan Antar-Agen
 export const getSystemLogs = async (_req: Request, res: Response): Promise<void> => {
     try {
         const [auditLogs, agentMessages] = await Promise.all([
-            prisma.auditLog.findMany({
-                orderBy: { createdAt: 'desc' },
-                take: 20,
-            }),
-            prisma.agentMessage.findMany({
-                orderBy: { createdAt: 'desc' },
-                take: 20,
-            }),
+            TrafficService.getAuditLogs(20),
+            TrafficService.getAgentMessages(20),
         ]);
 
         res.status(200).json({

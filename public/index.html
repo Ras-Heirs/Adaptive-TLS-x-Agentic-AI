@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Adaptive TLS x Agentic AI — Control Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0b1120;
+            color: #e2e8f0;
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        }
+
+        .neon-border {
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.1);
+        }
+
+        .light {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background-color: #1e293b;
+            opacity: 0.25;
+            transition: all 0.3s ease;
+        }
+
+        .light.RED.active {
+            background-color: #ef4444;
+            box-shadow: 0 0 20px #ef4444;
+            opacity: 1;
+        }
+
+        .light.YELLOW.active {
+            background-color: #eab308;
+            box-shadow: 0 0 20px #eab308;
+            opacity: 1;
+        }
+
+        .light.GREEN.active {
+            background-color: #10b981;
+            box-shadow: 0 0 20px #10b981;
+            opacity: 1;
+        }
+
+        input[type=range] {
+            accent-color: #38bdf8;
+            width: 100%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body class="p-6 min-h-screen flex flex-col gap-6">
+    <header class="flex flex-col md:flex-row justify-between items-center border-b border-slate-800 pb-4">
+        <div>
+            <h1 class="text-2xl font-bold text-sky-400 tracking-wide">🚦 Adaptive Traffic Light System (Agentic AI)</h1>
+            <p class="text-xs font-mono text-slate-400 mt-1">Interactive Control Dashboard</p>
+        </div>
+        <button onclick="fetchSystemStatus()"
+            class="mt-3 md:mt-0 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-mono px-4 py-2 rounded text-sky-300">
+            🔄 Refresh State
+        </button>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- SIMPANG A -->
+        <div class="neon-border bg-slate-900/80 rounded-xl p-5 flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-white">Simpang A</h2>
+                <span id="badge-A"
+                    class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300">NORMAL</span>
+            </div>
+            <div class="flex items-center gap-6 bg-slate-950 p-4 rounded-lg border border-slate-800">
+                <div class="flex gap-3">
+                    <div id="light-A-RED" class="light RED"></div>
+                    <div id="light-A-YELLOW" class="light YELLOW"></div>
+                    <div id="light-A-GREEN" class="light GREEN active"></div>
+                </div>
+                <div class="font-mono text-sm space-y-1">
+                    <p>Durasi Hijau : <span id="dur-A" class="text-emerald-400 font-bold text-lg">30s</span></p>
+                    <p>Source : <span id="src-A" class="text-sky-400">AGENT</span></p>
+                </div>
+            </div>
+            <div class="bg-slate-950/60 p-4 rounded-lg border border-slate-800/80 space-y-3">
+                <label class="block text-xs font-mono text-slate-400">
+                    Uji Kepadatan (0 - 100): <span id="val-A" class="text-sky-400 font-bold text-sm">20</span> unit
+                </label>
+                <input type="range" id="slider-A" min="0" max="100" value="20"
+                    oninput="document.getElementById('val-A').innerText = this.value" />
+                <div class="flex gap-2">
+                    <button onclick="sendSensor('A')"
+                        class="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded text-xs transition">
+                        KIRIM SENSOR A
+                    </button>
+                    <button onclick="sendAnomaly('A')"
+                        class="bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-300 font-mono py-2 px-3 rounded text-xs transition">
+                        ⚠️ Anomali (-99)
+                    </button>
+                </div>
+            </div>
+            <p id="reason-A"
+                class="text-xs font-mono text-slate-400 bg-slate-950 p-3 rounded border border-slate-800 min-h-[40px]">
+                Sistem siap menerima data.
+            </p>
+        </div>
+
+        <!-- SIMPANG B -->
+        <div class="neon-border bg-slate-900/80 rounded-xl p-5 flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-bold text-white">Simpang B</h2>
+                <span id="badge-B"
+                    class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300">NORMAL</span>
+            </div>
+            <div class="flex items-center gap-6 bg-slate-950 p-4 rounded-lg border border-slate-800">
+                <div class="flex gap-3">
+                    <div id="light-B-RED" class="light RED active"></div>
+                    <div id="light-B-YELLOW" class="light YELLOW"></div>
+                    <div id="light-B-GREEN" class="light GREEN"></div>
+                </div>
+                <div class="font-mono text-sm space-y-1">
+                    <p>Durasi Hijau : <span id="dur-B" class="text-emerald-400 font-bold text-lg">30s</span></p>
+                    <p>Source : <span id="src-B" class="text-sky-400">AGENT</span></p>
+                </div>
+            </div>
+            <div class="bg-slate-950/60 p-4 rounded-lg border border-slate-800/80 space-y-3">
+                <label class="block text-xs font-mono text-slate-400">
+                    Uji Kepadatan (0 - 100): <span id="val-B" class="text-sky-400 font-bold text-sm">20</span> unit
+                </label>
+                <input type="range" id="slider-B" min="0" max="100" value="20"
+                    oninput="document.getElementById('val-B').innerText = this.value" />
+                <div class="flex gap-2">
+                    <button onclick="sendSensor('B')"
+                        class="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded text-xs transition">
+                        KIRIM SENSOR B
+                    </button>
+                    <button onclick="sendAnomaly('B')"
+                        class="bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-300 font-mono py-2 px-3 rounded text-xs transition">
+                        ⚠️ Anomali (-99)
+                    </button>
+                </div>
+            </div>
+            <p id="reason-B"
+                class="text-xs font-mono text-slate-400 bg-slate-950 p-3 rounded border border-slate-800 min-h-[40px]">
+                Sistem siap menerima data.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function setLightUI(id, activeColor) {
+            ['RED', 'YELLOW', 'GREEN'].forEach(col => {
+                const el = document.getElementById(`light-${id}-${col}`);
+                if (el) el.classList.toggle('active', col === activeColor);
+            });
+        }
+
+        async function sendSensor(intersectionId) {
+            const vehicleCount = Number(document.getElementById(`slider-${intersectionId}`).value);
+            await postSensor({ intersectionId, vehicleCount });
+        }
+
+        async function sendAnomaly(intersectionId) {
+            await postSensor({ intersectionId, vehicleCount: -99 });
+        }
+
+        async function postSensor(payload) {
+            try {
+                const res = await fetch('/api/sensor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if (json.success) {
+                    const d = json.data;
+                    document.getElementById(`dur-${d.intersectionId}`).innerText = `${d.newGreenDuration}s`;
+                    document.getElementById(`src-${d.intersectionId}`).innerText = d.decisionSource;
+                    document.getElementById(`badge-${d.intersectionId}`).innerText = d.congestionLevel;
+                    document.getElementById(`reason-${d.intersectionId}`).innerText = d.decisionReason;
+                    await fetchSystemStatus();
+                } else {
+                    alert('Error: ' + (json.message || json.error));
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function fetchSystemStatus() {
+            try {
+                const res = await fetch('/api/intersections');
+                const json = await res.json();
+                if (json.success) {
+                    json.data.forEach(item => {
+                        if (item.trafficLightState) {
+                            setLightUI(item.id, item.trafficLightState.color);
+                            document.getElementById(`dur-${item.id}`).innerText = `${item.trafficLightState.greenDuration}s`;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        fetchSystemStatus();
+    </script>
+</body>
+
+</html>
