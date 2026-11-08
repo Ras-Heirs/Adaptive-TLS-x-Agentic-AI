@@ -9,7 +9,9 @@
     "start": "node dist/server.ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "db:migrate": "npx prisma migrate dev --name init_schema",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "simulate": "tsx src/simulate.ts",
+    "test:e2e": "tsx src/test-phase9.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
