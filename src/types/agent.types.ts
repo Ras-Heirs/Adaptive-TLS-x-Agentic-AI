@@ -1,6 +1,11 @@
+export type DecisionSource = 'AGENT' | 'MANUAL_OVERRIDE' | 'FALLBACK_RULE';
+export type LightColor = 'RED' | 'YELLOW' | 'GREEN';
+
 export interface SensorInput {
   intersectionId: string;
   vehicleCount: number;
+  overrideDuration?: number;
+  overrideReason?: string;  
 }
 
 export interface RawDecision {
@@ -14,6 +19,14 @@ export interface ValidatedDecision {
   finalDuration: number;
   reason: string;
   wasClamped: boolean;
+  source: DecisionSource;
+}
+
+export interface TrafficLightStateResult {
+  intersectionId: string;
+  color: string;
+  greenDuration: number;
+  updatedAt: Date;
 }
 
 export interface AgentProcessResult {
@@ -24,6 +37,7 @@ export interface AgentProcessResult {
   lightColor: string;
   congestionLevel: string;
   decisionReason: string;
+  decisionSource: DecisionSource;
   neighborNotified: boolean;
   targetNeighborId?: string;
   timestamp: Date;
