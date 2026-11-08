@@ -131,7 +131,7 @@ async function runPhase9Suite() {
         return `${iterations} transaksi sukses | Rata-rata waktu respons DB: ${avgLatency} ms/request`;
     });
 
-    // 7. Verifikasi Audit Logs & State
+    // 7. Verifikasi Audit Logs & Statej
     await runStep('7. Audit Trail & System State Verification (GET /api/logs)', async () => {
         const res = await fetch(`${BASE_URL}/logs`);
         const json: any = await res.json();

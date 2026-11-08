@@ -8,10 +8,8 @@ export interface AuditLogInput {
     details: Record<string, unknown>;
 }
 
+// Mencatat aktivitas agen atau sistem ke tabel AuditLog
 export class AuditLogger {
-    /**
-     * Mencatat aktivitas agen atau sistem ke tabel AuditLog
-     */
     public static async log(
         input: AuditLogInput,
         tx?: Prisma.TransactionClient
@@ -34,9 +32,7 @@ export class AuditLogger {
         return record;
     }
 
-    /**
-     * Mengambil riwayat audit terbaru untuk kebutuhan monitoring / dashboard
-     */
+    // Mengambil riwayat audit terbaru untuk kebutuhan monitoring / dashboard
     public static async getRecentLogs(limit: number = 20) {
         return prisma.auditLog.findMany({
             orderBy: { createdAt: 'desc' },

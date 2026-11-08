@@ -2,16 +2,12 @@ import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
 
 export class AgentMessenger {
-    /**
-     * Menentukan ID simpang tetangga (A <-> B)
-     */
+    // Menentukan ID simpang tetangga (A <-> B)
     public static getNeighborId(intersectionId: string): string {
         return intersectionId === 'A' ? 'B' : 'A';
     }
 
-    /**
-     * Mengambil daftar pesan peringatan yang masih PENDING dari simpang tetangga
-     */
+    // Mengambil daftar pesan peringatan yang masih PENDING dari simpang tetangga
     public static async getPendingAlerts(intersectionId: string) {
         return prisma.agentMessage.findMany({
             where: {
@@ -23,9 +19,7 @@ export class AgentMessenger {
         });
     }
 
-    /**
-     * Mengirim sinyal peringatan kemacetan (CONGESTION_ALERT) ke simpang tetangga
-     */
+    // Mengirim sinyal peringatan kemacetan (CONGESTION_ALERT) ke simpang tetangga
     public static async sendCongestionAlert(
         senderId: string,
         vehicleCount: number,
@@ -51,9 +45,7 @@ export class AgentMessenger {
         });
     }
 
-    /**
-     * Menandai semua pesan masuk di simpang tersebut sebagai PROCESSED
-     */
+    // Menandai semua pesan masuk di simpang tersebut sebagai PROCESSED
     public static async acknowledgeAlerts(
         receiverId: string,
         tx?: Prisma.TransactionClient

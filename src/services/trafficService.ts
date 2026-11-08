@@ -4,16 +4,13 @@ import { AuditLogger } from '../utils/auditLogger';
 import { SensorInput, AgentProcessResult } from '../types/agent.types';
 
 export class TrafficService {
-    /**
-     * Memproses data sensor masuk atau manual override
-     */
+    // Memproses data sensor masuk atau manual override
+
     public static async handleSensorInput(input: SensorInput): Promise<AgentProcessResult> {
         return IntersectionAgent.processSensorData(input);
     }
 
-    /**
-     * Mengambil status terkini dari semua simpang (beserta data sensor & keputusan terakhir)
-     */
+    // Mengambil status terkini dari semua simpang (beserta data sensor & keputusan terakhir)
     public static async getSystemStatus() {
         return prisma.intersection.findMany({
             include: {
@@ -31,9 +28,8 @@ export class TrafficService {
         });
     }
 
-    /**
-     * Mengambil riwayat komunikasi antar-agen (AgentMessage)
-     */
+    // Mengambil riwayat komunikasi antar-agen (AgentMessage)
+
     public static async getAgentMessages(limit: number = 20) {
         return prisma.agentMessage.findMany({
             orderBy: { createdAt: 'desc' },
@@ -41,9 +37,7 @@ export class TrafficService {
         });
     }
 
-    /**
-     * Mengambil riwayat Audit Log terbaru
-     */
+    // Mengambil riwayat Audit Log terbaru
     public static async getAuditLogs(limit: number = 20) {
         return AuditLogger.getRecentLogs(limit);
     }

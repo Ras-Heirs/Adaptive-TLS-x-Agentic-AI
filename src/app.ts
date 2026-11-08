@@ -19,7 +19,6 @@ app.use(
 app.use(cors());
 app.use(express.json());
 
-// Sajikan halaman Web Dashboard dari folder public/
 app.use(express.static(path.join(process.cwd(), 'public')));
 
 app.get('/', (_req: Request, res: Response) => {
@@ -36,7 +35,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 app.use('/api', trafficRoutes);
 
-// 404 Handler (dieksekusi jika rute tidak ditemukan di public/ maupun di /api)
+// 404 Handler
 app.use((req: Request, res: Response, next: NextFunction) => {
   const error: any = new Error(`Endpoint ${req.originalUrl} tidak ditemukan`);
   error.statusCode = 404;
