@@ -1,27 +1,4 @@
 {
-<<<<<<< HEAD
-  "name": "adaptive-tls-frontend",
-  "private": true,
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5173",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
-  },
-  "devDependencies": {
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "typescript": "^5.5.3",
-    "vite": "^5.4.1"
-  }
-}
-=======
   "name": "adaptive-traffic-ai",
   "version": "1.0.0",
   "description": "",
@@ -70,4 +47,3 @@
     "zod": "^4.6.7"
   }
 }
->>>>>>> d65ac3a61294df29223f0272ec4bc670b39d97cb
