@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070b14" />
+    <title>Adaptive TLS x Agentic AI — 4-Way Vision Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        margin: 0;
+        background-color: #070b14;
+        color: #e2e8f0;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        overflow-x: hidden;
+      }
+      .dl-frame {
+        border: 3px solid #eab308;
+        box-shadow: 0 0 30px rgba(234, 179, 8, 0.15);
+      }
+      .neon-card {
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+      }
+      canvas {
+        background-color: #0f172a;
+        border-radius: 0.75rem;
+        width: 100%;
+        height: auto;
+        cursor: grab;
+        display: block;
+        touch-action: none;
+      }
+      canvas:active { cursor: grabbing; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
