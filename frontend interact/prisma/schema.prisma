@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Intersection {
+  id                String             @id
+  name              String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  sensorData        SensorData[]
+  decisions         Decision[]
+  trafficLightState TrafficLightState?
+  sentMessages      AgentMessage[]     @relation("SentMessages")
+  receivedMessages  AgentMessage[]     @relation("ReceivedMessages")
+  overrides         Override[]
+
+  @@map("intersections")
+}
+
+model SensorData {
+  id             String       @id @default(uuid())
+  intersectionId String
+  vehicleCount   Int
+  timestamp      DateTime     @default(now())
+  intersection   Intersection @relation(fields: [intersectionId], references: [id], onDelete: Cascade)
+
+  @@map("sensor_data")
+}
+
+model Decision {
+  id             String       @id @default(uuid())
+  intersectionId String
+  greenDuration  Int
+  reason         String
+  source         String       @default("AGENT")
+  createdAt      DateTime     @default(now())
+  intersection   Intersection @relation(fields: [intersectionId], references: [id], onDelete: Cascade)
+
+  @@map("decisions")
+}
+
+model TrafficLightState {
+  id             String       @id @default(uuid())
+  intersectionId String       @unique
+  color          String       @default("RED")
+  greenDuration  Int          @default(30)
+  updatedAt      DateTime     @updatedAt
+  intersection   Intersection @relation(fields: [intersectionId], references: [id], onDelete: Cascade)
+
+  @@map("traffic_light_states")
+}
+
+model AgentMessage {
+  id          String       @id @default(uuid())
+  senderId    String
+  receiverId  String
+  messageType String
+  payload     Json
+  status      String
+  createdAt   DateTime     @default(now())
+  sender      Intersection @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    Intersection @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("agent_messages")
+}
+
+model Override {
+  id               String       @id @default(uuid())
+  intersectionId   String
+  previousDuration Int
+  newDuration      Int
+  reason           String
+  operatorId       String
+  createdAt        DateTime     @default(now())
+  intersection     Intersection @relation(fields: [intersectionId], references: [id], onDelete: Cascade)
+
+  @@map("overrides")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  entityType String
+  entityId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
