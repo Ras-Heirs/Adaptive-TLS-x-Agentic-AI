@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+<<<<<<< HEAD
     "target": "ES2020",
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
@@ -15,4 +16,18 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"]
+=======
+    "target": "ES2022",
+    "module": "CommonJS",
+    "types": ["node"],
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "**/*.test.ts"]
+>>>>>>> d65ac3a61294df29223f0272ec4bc670b39d97cb
 }
