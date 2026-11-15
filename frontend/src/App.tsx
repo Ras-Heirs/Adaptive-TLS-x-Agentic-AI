@@ -7,7 +7,14 @@ import { createVehicle } from './utils/laneGeometry';
 import { TrafficApi } from './services/trafficApi';
 import { GuideModal } from './components/GuideModal';
 import { TrafficCanvas } from './components/TrafficCanvas';
-import { ControlDeck } from './components/ControlDeck';
+import { IntersectionCard, InjectionCard, LogCard } from './components/ControlDeck';
+import { ConnectionBadge } from './components/ConnectionBadge';
+import { InsightsPanel } from './components/InsightsPanel';
+import { ManualControl } from './components/ManualControl';
+import type { ManualSession } from './components/ManualControl';
+import { Clock } from './components/Clock';
+import { Logo } from './components/Logo';
+import { toggleStageFullscreen, useShortcuts } from './hooks/useShortcuts';
 
 export const App: React.FC = () => {
   const [isGuideOpen, setIsGuideOpen] = useState(true);
@@ -217,74 +224,130 @@ export const App: React.FC = () => {
 
   const getScenarioStatusLabel = () => {
     if (scenario === 'AUTO_CYCLE') {
-      const names = ['Siang Normal', 'Jam Sibuk (Rush Hour)', 'Jam Kosong (Malam)'];
-      return `Mode: Siklus Otomatis -> ${names[autoCyclePhase % names.length]}`;
+      const names = ['Day', 'Rush Hour', 'Night'];
+      return `Mode: Auto Cycle → ${names[autoCyclePhase % names.length]}`;
     }
     const labels: Record<ScenarioMode, string> = {
-      NORMAL: 'Mode: Siang Normal',
-      RUSH_HOUR: 'Mode: Jam Sibuk / Rush Hour',
-      NIGHT: 'Mode: Jam Kosong / Malam',
+      NORMAL: 'Mode: Day',
+      RUSH_HOUR: 'Mode: Rush Hour',
+      NIGHT: 'Mode: Night',
       AUTO_CYCLE: '',
-      CUSTOM: 'Mode: Custom Scenario (Trafik Otomatis Nonaktif — Manual)',
+      CUSTOM: 'Mode: Custom (Traffic Generator Off)',
     };
     return labels[scenario];
   };
 
+  // ── tampilan saja (tidak memengaruhi logika di atas) ──
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const nightMode = scenario === 'NIGHT' || (scenario === 'AUTO_CYCLE' && autoCyclePhase % 3 === 2);
+  useShortcuts({
+    zoomIn: () => setCamZoom((zoom) => Math.min(1.4, Number((zoom + 0.12).toFixed(2)))),
+    zoomOut: () => setCamZoom((zoom) => Math.max(0.35, Number((zoom - 0.12).toFixed(2)))),
+    resetView: () => { camPanRef.current = { x: 0, y: 0 }; setCamZoom(0.55); },
+    toggleBBox: () => setShowBBox((v) => !v),
+    toggleHeatmap: () => setShowHeatmap((v) => !v),
+    toggleFullscreen: toggleStageFullscreen,
+    openGuide: () => setIsGuideOpen(true),
+  });
+
+  // ── kendali manual operator (frontend saja; memakai endpoint /api/override yang sudah ada) ──
+  const [manual, setManual] = useState<ManualSession | null>(null);
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const autoSyncBeforeManualRef = useRef<boolean | null>(null);
+  const manualRef = useRef<ManualSession | null>(null);
+  manualRef.current = manual;
+
+  const releaseManual = useCallback(() => {
+    setManual(null);
+    if (autoSyncBeforeManualRef.current !== null) {
+      setAutoSync(autoSyncBeforeManualRef.current);
+      autoSyncBeforeManualRef.current = null;
+    }
+  }, []);
+
+  const applyManual = useCallback(async (axis: AxisId, duration: number, reason: string) => {
+    setManualBusy(true);
+    setManualError(null);
+    // jeda sinkron otomatis dulu supaya override tidak langsung tertimpa kiriman sensor
+    if (autoSyncBeforeManualRef.current === null) autoSyncBeforeManualRef.current = autoSync;
+    setAutoSync(false);
+    try {
+      const response = await TrafficApi.sendManualOverride(axis, duration, reason);
+      if (!response?.success) throw new Error(response?.message || 'Override rejected by the backend');
+      const finalDuration = Number(response?.data?.validatedOverride?.finalDuration) || duration;
+      const now = Date.now();
+      setManual({ axis, duration: finalDuration, reason, startedAt: now, until: now + finalDuration * 1000 });
+      await refreshBackendState();
+    } catch (error) {
+      console.error('Failed to apply manual control:', error);
+      setManualError(`Override failed: ${error instanceof Error ? error.message : String(error)}. Check the backend connection.`);
+      // kalau belum ada sesi manual yang berjalan, kembalikan sinkron otomatis seperti semula
+      if (!manualRef.current && autoSyncBeforeManualRef.current !== null) {
+        setAutoSync(autoSyncBeforeManualRef.current);
+        autoSyncBeforeManualRef.current = null;
+      }
+    } finally {
+      setManualBusy(false);
+    }
+  }, [autoSync, refreshBackendState]);
+
+  useEffect(() => {
+    if (!manual) return;
+    const timer = window.setTimeout(releaseManual, Math.max(0, manual.until - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [manual, releaseManual]);
+
+  const scenarioOptions: { id: ScenarioMode; label: string }[] = [
+    { id: 'NORMAL', label: 'Day' },
+    { id: 'RUSH_HOUR', label: 'Rush Hour' },
+    { id: 'NIGHT', label: 'Night' },
+    { id: 'AUTO_CYCLE', label: 'Auto Cycle' },
+    { id: 'CUSTOM', label: 'Custom' },
+  ];
+
+  const scenarioShort: Record<ScenarioMode, string> = {
+    NORMAL: 'Day', RUSH_HOUR: 'Rush Hour', NIGHT: 'Night', AUTO_CYCLE: 'Auto Cycle', CUSTOM: 'Custom',
+  };
+
   return (
-    <div className="p-3 md:p-5 min-h-screen flex flex-col gap-4">
+    <div className="app">
       <GuideModal isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
 
-      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-800 pb-3 gap-3">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="bg-amber-500 text-slate-950 font-black px-2.5 py-0.5 rounded text-xs font-mono">DL-2121RM x AI VISION</span>
-            <h1 className="text-lg md:text-2xl font-bold text-sky-400">4-Way Adaptive Traffic Light & Camera Supervision Simulator</h1>
+      <header className="header">
+        <div className="brand">
+          <Logo size={44} />
+          <div>
+            <b>Adaptive Traffic Light</b>
+            <span>Intersection · 4-Way Simulation</span>
           </div>
-          <p className="text-[11px] font-mono text-slate-400 mt-0.5">Multi-Agent Coordination + SafetyGuard + Strict 2-Way Lane Discipline (React + TS Modular)</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setIsGuideOpen(true)} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded font-mono shadow">📖 Buka Note Panduan</button>
-          <label className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 px-2.5 py-1.5 rounded text-xs font-mono cursor-pointer">
-            <input type="checkbox" checked={showBBox} onChange={(e) => setShowBBox(e.target.checked)} className="accent-sky-400" />
-            <span>👁️ Bounding Box</span>
-          </label>
-          <label className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 px-2.5 py-1.5 rounded text-xs font-mono cursor-pointer">
-            <input type="checkbox" checked={autoSync} onChange={(e) => setAutoSync(e.target.checked)} className="accent-emerald-400" />
-            <span>🤖 Auto-Agent Sync (4d)</span>
-          </label>
+
+        <nav className="scenarios" role="group" aria-label="Traffic scenario">
+          {scenarioOptions.map((item) => (
+            <button key={item.id} aria-pressed={scenario === item.id} onClick={() => setScenario(item.id)}>
+              {scenarioShort[item.id]}
+            </button>
+          ))}
+        </nav>
+
+        <div className="header-right">
+          <div className="toggles">
+            <button className="toggle" aria-pressed={showBBox} onClick={() => setShowBBox((v) => !v)} title="Bounding Boxes (B)">Boxes</button>
+            <button className="toggle" aria-pressed={showHeatmap} onClick={() => setShowHeatmap((v) => !v)} title="Heatmap (H)">Heatmap</button>
+            <button
+              className="toggle" aria-pressed={autoSync} disabled={!!manual}
+              onClick={() => setAutoSync((v) => !v)}
+              title={manual ? 'Paused while manual control is active' : 'Send camera counts to the agents every 4 seconds'}
+            >Auto Sync</button>
+            <button className="toggle toggle-icon" onClick={() => setIsGuideOpen(true)} title="Guide (?)" aria-label="Open guide">?</button>
+          </div>
+          <ConnectionBadge />
+          <Clock />
         </div>
       </header>
 
-      <div className="neon-card rounded-xl p-3 flex flex-col lg:flex-row justify-between items-center gap-3">
-        <div className="flex flex-wrap items-center gap-1.5 w-full lg:w-auto">
-          <span className="text-xs font-mono text-slate-400 mr-1">🎬 Mode Skenario:</span>
-          {([
-            { id: 'NORMAL', label: '☀️ Siang Normal' },
-            { id: 'RUSH_HOUR', label: '🌅 Rush Hour (Macet)' },
-            { id: 'NIGHT', label: '🌙 Jam Kosong' },
-            { id: 'AUTO_CYCLE', label: '🔄 Siklus Otomatis' },
-            { id: 'CUSTOM', label: '🛠️ Custom Scenario (Manual)' },
-          ] as { id: ScenarioMode; label: string }[]).map((item) => (
-            <button key={item.id} onClick={() => setScenario(item.id)}
-              className={`text-xs font-mono px-3 py-1.5 rounded border transition ${
-                scenario === item.id
-                  ? 'bg-sky-600 text-white border-sky-400 shadow-md'
-                  : 'border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800'
-              }`}>{item.label}</button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2 w-full lg:w-auto justify-end font-mono text-xs">
-          <span className="text-slate-400">🔍 Zoom Kamera:</span>
-          <button onClick={() => setCamZoom((zoom) => Math.max(0.35, Number((zoom - 0.12).toFixed(2))))} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2.5 py-1 rounded font-bold">➖ Out</button>
-          <input type="range" min="0.35" max="1.4" step="0.05" value={camZoom} onChange={(e) => setCamZoom(parseFloat(e.target.value))} className="w-24 accent-sky-400" />
-          <span className="text-sky-400 font-bold w-12 text-center">{Math.round(camZoom * 100)}%</span>
-          <button onClick={() => setCamZoom((zoom) => Math.min(1.4, Number((zoom + 0.12).toFixed(2))))} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2.5 py-1 rounded font-bold">➕ In</button>
-          <button onClick={() => { camPanRef.current = { x: 0, y: 0 }; setCamZoom(0.55); }} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2.5 py-1 rounded text-sky-300">🎯 Reset</button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+      <main className="layout">
         <TrafficCanvas
           vehiclesRef={vehiclesRef}
           lightStateRef={lightStateRef}
@@ -299,19 +362,42 @@ export const App: React.FC = () => {
             setCamCounts(counts);
           }}
           onEmergencyDetected={handleEmergencyDetected}
+          nightMode={nightMode}
+          showHeatmap={showHeatmap}
         />
-        <ControlDeck
-          axisState={axisState}
+
+        <aside className="side">
+          <IntersectionCard axis="A" state={axisState.A} inView={camCounts.A} />
+          <IntersectionCard axis="B" state={axisState.B} inView={camCounts.B} />
+          <ManualControl
+            axisState={axisState}
+            session={manual}
+            busy={manualBusy}
+            error={manualError}
+            onApply={(axis, duration, reason) => { void applyManual(axis, duration, reason); }}
+            onRelease={releaseManual}
+          />
+        </aside>
+      </main>
+
+      <InsightsPanel axisState={axisState} camCounts={camCounts} vehiclesRef={vehiclesRef} />
+
+      <section className="lower">
+        <InjectionCard
           camCounts={camCounts}
-          agentMessages={agentMessages}
-          auditLogs={auditLogs}
           onInjectVehicle={handleInjectVehicle}
           onInjectBurst={handleInjectBurst}
           onSyncCamera={handleSyncCamera}
           onSendGlitch={handleSendGlitch}
           onClearVehicles={() => { vehiclesRef.current = []; }}
+          syncLocked={!!manual}
         />
-      </div>
+        <LogCard agentMessages={agentMessages} auditLogs={auditLogs} />
+      </section>
+
+      <footer className="footnote">
+        Signal decisions come from the backend agents · Frontend simulation with SafetyGuard limits of 15–90 s
+      </footer>
     </div>
   );
 };
