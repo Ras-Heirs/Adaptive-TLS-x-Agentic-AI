@@ -123,76 +123,205 @@ export function createVehicle(
   };
 }
 
+// ── Fisika kendaraan ──────────────────────────────────────────────
+// Aturan utama: keputusan "boleh masuk simpang" diambil di garis henti, bukan di
+// dalam kotak simpang. Kendaraan yang sudah masuk kotak tidak pernah menunggu
+// kendaraan lain di dalam kotak, sehingga tidak ada lagi saling tunggu (gridlock).
+const ACCEL = 0.14; // px/frame²
+const BRAKE = 0.3; // perlambatan yang direncanakan
+const MAX_BRAKE = 0.6; // perlambatan maksimum
+const FOLLOW_BUFFER = 10; // jarak antar-bumper yang dijaga saat mengikuti
+const MIN_BUMPER_GAP = 4; // batas keras: bodi kendaraan tidak pernah lebih dekat dari ini
+const GATE_RANGE = 90; // mulai menilai izin masuk simpang dari jarak ini
+const STOP_BEFORE = 18; // titik berhenti, sebelum waypoint garis henti
+const RIGHT_TURN_PRIORITY_FRAMES = 240; // ±4 detik menunggu saat hijau → arus lawan arah memberi giliran
+const COMMIT_RANGE = 45; // di jarak ini kendaraan yang diizinkan masuk "memesan" simpang
+const BOX = 175; // area simpang: mencakup garis henti (148 + 16) sampai mulut jalan keluar
+
+const OPPOSITE_DIR: Record<Direction, Direction> = { N: 'S', S: 'N', W: 'E', E: 'W' };
+
+function distToStopLine(v: Vehicle): number {
+  const wp = v.waypoints[1];
+  return Math.hypot(wp.x - v.x, wp.y - v.y);
+}
+
+function isInBox(v: Vehicle): boolean {
+  return v.passedStopLine && Math.abs(v.x) < BOX && Math.abs(v.y) < BOX;
+}
+
+/**
+ * Reservasi simpang: kendaraan yang sudah dekat garis henti dan diizinkan masuk dicatat di sini.
+ * Kendaraan lain dengan lintasan berpotongan menunggu sampai reservasi itu keluar dari simpang.
+ * Hanya menyimpan id kendaraan; tidak mengubah tipe data Vehicle.
+ */
+const committed = new Set<number>();
+
+/** Lama (frame) kendaraan belok kanan menunggu di garis henti saat lampunya hijau. */
+const greenWaitFrames = new Map<number, number>();
+
+function occupiesBox(v: Vehicle): boolean {
+  return isInBox(v) || committed.has(v.id);
+}
+
+/** Konflik lintasan yang membuat kendaraan harus menunggu di garis henti. */
+function hasConflict(v: Vehicle, vehicles: Vehicle[]): boolean {
+  const opp = OPPOSITE_DIR[v.dir];
+  for (const o of vehicles) {
+    if (o.id === v.id || !occupiesBox(o)) continue;
+    // poros tegak lurus masih memakai simpang (misal sisa fase kuning)
+    if (o.axis !== v.axis) return true;
+    if (o.dir !== opp) continue;
+    // belok kanan memotong arus lawan arah: tidak boleh bersamaan dengan kendaraan lawan arah
+    if (v.turnType === 'RIGHT' || o.turnType === 'RIGHT') return true;
+  }
+  // keadilan: kendaraan belok kanan yang sudah lama menunggu mendapat giliran,
+  // arus lawan arah yang belum masuk simpang menahan diri sebentar
+  if (v.turnType !== 'RIGHT') {
+    for (const o of vehicles) {
+      if (o.dir === opp && o.turnType === 'RIGHT' &&
+        (greenWaitFrames.get(o.id) ?? 0) > RIGHT_TURN_PRIORITY_FRAMES) return true;
+    }
+  }
+  return false;
+}
+
+function isAheadOnSameRoute(o: Vehicle, v: Vehicle): boolean {
+  if (o.dir !== v.dir || o.laneOffset !== v.laneOffset || o.turnType !== v.turnType) return false;
+  if (o.wpIndex !== v.wpIndex) return o.wpIndex > v.wpIndex;
+  const wp = v.waypoints[v.wpIndex];
+  if (!wp) return false;
+  return Math.hypot(wp.x - o.x, wp.y - o.y) < Math.hypot(wp.x - v.x, wp.y - v.y);
+}
+
+/** Jarak bumper ke kendaraan terdekat di depan pada jalur yang sama. */
+function gapToLeader(v: Vehicle, vehicles: Vehicle[]): number {
+  let best = Infinity;
+  const cos = Math.cos(v.angle);
+  const sin = Math.sin(v.angle);
+  for (const o of vehicles) {
+    if (o.id === v.id) continue;
+    const dx = o.x - v.x;
+    const dy = o.y - v.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 220) continue;
+    const halfLengths = (v.length + o.length) / 2;
+    if (!v.passedStopLine) {
+      // sebelum garis henti: hanya antrean di lajur yang sama
+      if (o.dir !== v.dir || o.laneOffset !== v.laneOffset) continue;
+      const forward = dx * cos + dy * sin;
+      if (!o.passedStopLine && forward <= 0) continue;
+      best = Math.min(best, dist - halfLengths);
+      continue;
+    }
+    // di dalam/setelah simpang: kendaraan di depan pada rute yang sama (termasuk di tikungan)
+    if (isAheadOnSameRoute(o, v)) {
+      best = Math.min(best, dist - halfLengths);
+      continue;
+    }
+    // atau kendaraan lain yang juga sudah lewat garis henti dan tepat di depan moncong.
+    // Kendaraan yang masih antre di lajur masuk tidak pernah berada di lintasan keluar.
+    if (!o.passedStopLine) continue;
+    const forward = dx * cos + dy * sin;
+    const lateral = -dx * sin + dy * cos;
+    if (forward > 0 && Math.abs(lateral) < (v.width + o.width) / 2 + 6) {
+      // pengaman terakhir: kalau dua kendaraan saling berhadapan, yang datang lebih dulu tetap jalan
+      const oCos = Math.cos(o.angle);
+      const oSin = Math.sin(o.angle);
+      const oForward = -dx * oCos - dy * oSin;
+      const oLateral = dx * oSin - dy * oCos;
+      const mutual = oForward > 0 && Math.abs(oLateral) < (v.width + o.width) / 2 + 6;
+      if (mutual && v.id < o.id) continue;
+      best = Math.min(best, forward - halfLengths);
+    }
+  }
+  return best;
+}
+
+/** Kecepatan tertinggi yang masih bisa berhenti dalam jarak `room`. */
+function safeSpeed(room: number): number {
+  return Math.sqrt(2 * BRAKE * Math.max(0, room));
+}
+
 export function stepVehiclesPhysics(
   vehicles: Vehicle[],
   lightColors: Record<AxisId, LightColor>,
 ): Vehicle[] {
-  const oppositeDir: Record<Direction, Direction> = { N: 'S', S: 'N', W: 'E', E: 'W' };
+  // bersihkan reservasi kendaraan yang sudah keluar simpang atau sudah hilang
+  const alive = new Set(vehicles.map((v) => v.id));
+  for (const id of committed) {
+    const v = vehicles.find((x) => x.id === id);
+    if (!alive.has(id) || (v && v.passedStopLine && !isInBox(v))) committed.delete(id);
+  }
+  for (const id of greenWaitFrames.keys()) if (!alive.has(id)) greenWaitFrames.delete(id);
 
-  vehicles.forEach((v) => {
+  // Tahap 1: rencanakan kecepatan semua kendaraan dari posisi saat ini.
+  // Diproses berurutan, jadi reservasi yang dibuat di frame ini langsung terlihat oleh kendaraan berikutnya.
+  const plans = vehicles.map((v) => {
     const target = v.waypoints[v.wpIndex];
-    if (!target) return;
+    if (!target) return { speed: v.speed, maxTravel: 0 };
 
-    const dx = target.x - v.x;
-    const dy = target.y - v.y;
-    const distToWp = Math.hypot(dx, dy);
-    let mustStop = false;
+    let desired = v.maxSpeed;
+    let maxTravel = Infinity;
 
-    if (!v.passedStopLine && v.wpIndex === 1) {
-      const axisColor = lightColors[v.axis];
-      if (axisColor !== 'GREEN' && distToWp <= 28) mustStop = true;
-      if (axisColor === 'GREEN' && distToWp <= 24) {
-        const perpAxis: AxisId = v.axis === 'A' ? 'B' : 'A';
-        const perpBlocking = vehicles.some(
-          (other) => other.axis === perpAxis &&
-            Math.abs(other.x) < 130 && Math.abs(other.y) < 130,
-        );
-        if (perpBlocking) mustStop = true;
-      }
-    }
-
-    if (v.turnType === 'RIGHT' && v.passedStopLine &&
-      Math.abs(v.x) < 120 && Math.abs(v.y) < 120) {
-      const opp = oppositeDir[v.dir];
-      const oncomingConflict = vehicles.some(
-        (other) => other.dir === opp &&
-          other.turnType !== 'RIGHT' &&
-          other.passedStopLine &&
-          Math.abs(other.x) < 145 && Math.abs(other.y) < 145,
-      );
-      if (oncomingConflict && v.wpIndex <= 3) mustStop = true;
-    }
-
-    for (const other of vehicles) {
-      if (other.id === v.id) continue;
-      if (!v.passedStopLine &&
-        (other.dir !== v.dir || other.laneOffset !== v.laneOffset)) continue;
-
-      const dist = Math.hypot(other.x - v.x, other.y - v.y);
-      const minSafeDist = (v.length + other.length) * 0.5 + 14;
-      if (dist < minSafeDist) {
-        const angleToOther = Math.atan2(other.y - v.y, other.x - v.x);
-        let angleDiff = Math.abs(angleToOther - v.angle);
-        if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-        if (angleDiff < 0.42) {
-          mustStop = true;
-          break;
+    // garis henti: lampu + konflik lintasan
+    if (!v.passedStopLine && v.wpIndex === 1 && !committed.has(v.id)) {
+      const d = Math.hypot(target.x - v.x, target.y - v.y);
+      if (d < GATE_RANGE) {
+        const color = lightColors[v.axis];
+        const conflict = hasConflict(v, vehicles);
+        let mayEnter = color === 'GREEN' && !conflict;
+        if (!mayEnter && color === 'YELLOW' && !conflict) {
+          // dilema kuning: kalau sudah tidak sempat berhenti dengan nyaman, lanjut
+          const brakingDist = (v.speed * v.speed) / (2 * BRAKE);
+          if (d - STOP_BEFORE < brakingDist) mayEnter = true;
+        }
+        if (v.turnType === 'RIGHT' && !mayEnter && color === 'GREEN' && d < 40) {
+          greenWaitFrames.set(v.id, (greenWaitFrames.get(v.id) ?? 0) + 1);
+        } else {
+          greenWaitFrames.delete(v.id);
+        }
+        if (mayEnter && d < COMMIT_RANGE) {
+          committed.add(v.id);
+        } else if (!mayEnter) {
+          desired = Math.min(desired, safeSpeed(d - STOP_BEFORE));
+          maxTravel = Math.min(maxTravel, Math.max(0, d - 17)); // tidak pernah melewati garis henti
         }
       }
     }
 
-    v.speed = mustStop
-      ? Math.max(0, v.speed - 0.35)
-      : Math.min(v.maxSpeed, v.speed + 0.14);
+    // kendaraan di depan
+    const gap = gapToLeader(v, vehicles);
+    if (gap < Infinity) {
+      desired = Math.min(desired, safeSpeed(gap - FOLLOW_BUFFER));
+      maxTravel = Math.min(maxTravel, Math.max(0, gap - MIN_BUMPER_GAP));
+    }
 
-    if (v.speed > 0.01) {
+    const speed = desired >= v.speed
+      ? Math.min(desired, v.speed + ACCEL)
+      : Math.max(desired, v.speed - MAX_BRAKE);
+    return { speed, maxTravel };
+  });
+
+  // Tahap 2: gerakkan semua kendaraan (setir mengikuti waypoint seperti sebelumnya).
+  vehicles.forEach((v, i) => {
+    const target = v.waypoints[v.wpIndex];
+    if (!target) return;
+    const { speed, maxTravel } = plans[i];
+    const travel = Math.max(0, Math.min(speed, maxTravel));
+    v.speed = travel;
+
+    const dx = target.x - v.x;
+    const dy = target.y - v.y;
+    const distToWp = Math.hypot(dx, dy);
+
+    if (travel > 0.01) {
       const desiredAngle = Math.atan2(dy, dx);
       let diff = desiredAngle - v.angle;
       while (diff > Math.PI) diff -= 2 * Math.PI;
       while (diff < -Math.PI) diff += 2 * Math.PI;
       v.angle += diff * 0.28;
-      v.x += Math.cos(v.angle) * v.speed;
-      v.y += Math.sin(v.angle) * v.speed;
+      v.x += Math.cos(v.angle) * travel;
+      v.y += Math.sin(v.angle) * travel;
     }
 
     if (distToWp < 16) {

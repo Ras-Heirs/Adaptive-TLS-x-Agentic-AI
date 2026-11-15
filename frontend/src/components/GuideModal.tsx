@@ -1,63 +1,79 @@
 import type { FC } from 'react';
+import { Logo } from './Logo';
 
 interface GuideModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+const STEPS: { title: string; text: string }[] = [
+  {
+    title: 'Navigate the Map',
+    text: 'Scroll or use the zoom controls to zoom, and drag the map to pan. Dashed frames mark the camera zones on each approach. Click any vehicle to see its details.',
+  },
+  {
+    title: 'Choose a Scenario',
+    text: 'Day, Rush Hour and Night generate traffic automatically; Auto Cycle rotates through all three. Custom turns the generator off, so vehicles only appear from Traffic Injection.',
+  },
+  {
+    title: 'Emergency Vehicles',
+    text: 'Add an ambulance or fire truck from Traffic Injection. Once it enters a camera zone, the frontend requests priority from the backend.',
+  },
+  {
+    title: 'Signal Decisions',
+    text: 'Camera counts are sent to the agents every 4 seconds (Auto Sync), or manually with Send to Agent. Light colors and durations always come from the backend.',
+  },
+  {
+    title: 'Manual Control & Analytics',
+    text: 'Force Green gives one intersection green for 15–90 s and pauses Auto Sync. Below the map, Queue at Cameras, Performance and Phase History can be exported as CSV.',
+  },
+];
+
+const KEYS: [string, string][] = [
+  ['+ / −', 'Zoom'], ['R', 'Reset View'], ['F', 'Fullscreen'], ['B', 'Bounding Boxes'],
+  ['H', 'Heatmap'], ['Esc', 'Deselect / Exit'], ['?', 'Open Guide'],
+];
+
 export const GuideModal: FC<GuideModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="neon-card max-w-2xl w-full rounded-2xl p-6 border-2 border-sky-400 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="bg-amber-500 text-slate-950 font-black px-2 py-0.5 rounded text-xs font-mono">DL-2121RM</span>
-            <h2 className="text-lg md:text-xl font-bold text-sky-400">📖 Panduan Penggunaan Simulator</h2>
+    <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="guide-title" onClick={onClose}>
+      <div className="surface modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <Logo size={40} />
+          <div>
+            <span className="eyebrow">Welcome</span>
+            <h3 id="guide-title">Adaptive Traffic Light</h3>
           </div>
-          <button onClick={onClose} aria-label="Tutup panduan" className="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+          <button className="icon-btn" onClick={onClose} aria-label="Close guide">×</button>
         </div>
 
-        <div className="space-y-3 text-xs md:text-sm text-slate-300 leading-relaxed">
-          <p className="text-slate-200 font-medium">
-            Selamat datang di <b>Adaptive Traffic Light System (Agentic AI) Simulator</b>.
-            Simulator memodelkan persimpangan 4 arah dengan dua poros lampu (A dan B),
-            zona supervisi kamera AI, serta integrasi backend.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
-            <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-              <p className="text-sky-400 font-bold mb-1">1. 🔍 Navigasi Peta & Kamera AI</p>
-              <p>• Scroll mouse atau tombol zoom untuk memperbesar/memperkecil peta.</p>
-              <p>• Klik dan geser kanvas untuk menggeser tampilan.</p>
-              <p>• Kotak biru putus-putus menunjukkan zona supervisi kamera AI.</p>
-            </div>
-            <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-              <p className="text-amber-400 font-bold mb-1">2. 🌆 Skenario Dinamis vs Custom</p>
-              <p>• Pilih Normal, Rush Hour, atau Jam Kosong untuk trafik otomatis.</p>
-              <p>• Kendaraan tetap dapat ditambahkan saat mode otomatis berjalan.</p>
-              <p>• Custom Scenario menonaktifkan generator trafik otomatis.</p>
-            </div>
-            <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-              <p className="text-rose-400 font-bold mb-1">3. 🚨 Prioritas Darurat</p>
-              <p>• Tambahkan ambulans atau damkar melalui panel Simpang A/B.</p>
-              <p>• Saat kendaraan darurat terdeteksi di zona kamera, frontend mengirim permintaan override ke backend.</p>
-            </div>
-            <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-              <p className="text-emerald-400 font-bold mb-1">4. 🛣️ Disiplin Jalan 2 Arah</p>
-              <p>• Jalan memiliki lajur masuk dan keluar untuk masing-masing arah.</p>
-              <p>• Kendaraan mengikuti waypoint sesuai arah lurus atau belok.</p>
-            </div>
-          </div>
-          <p className="text-amber-300 text-xs">
-            Catatan: keputusan lampu lalu lintas berasal dari backend. Pastikan API backend sesuai dengan endpoint yang digunakan frontend.
-          </p>
+        <ol className="steps">
+          {STEPS.map((step, i) => (
+            <li key={step.title}>
+              <span className="step-n">{String(i + 1).padStart(2, '0')}</span>
+              <div>
+                <h4>{step.title}</h4>
+                <p>{step.text}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <div className="keys">
+          <span className="eyebrow">Keyboard Shortcuts</span>
+          <dl>
+            {KEYS.map(([k, v]) => (
+              <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>
+            ))}
+          </dl>
         </div>
 
-        <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-          <button onClick={onClose} className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-6 py-2 rounded-lg text-sm font-mono shadow-lg transition">
-            🚀 Mengerti & Mulai Simulator
-          </button>
+        <p className="modal-note">Make sure the backend is running on port 3000 with <code>/api/intersections</code>, <code>/api/logs</code>, <code>/api/sensor</code> and <code>/api/override</code> available.</p>
+
+        <div className="modal-foot">
+          <button className="btn btn-gold" onClick={onClose}>Start Simulation</button>
         </div>
       </div>
     </div>
