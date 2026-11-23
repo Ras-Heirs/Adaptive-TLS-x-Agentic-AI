@@ -13,7 +13,7 @@
     "simulate": "tsx src/simulate.ts",
     "test:e2e": "tsx src/test-phase9.ts",
     "postinstall": "prisma generate",
-    "vercel-build": "npx prisma generate && node -e \"require('fs').mkdirSync('dist', { recursive: true })\""
+    "vercel-build": "npx prisma generate && node -e \"const fs=require('fs'); fs.mkdirSync('dist',{recursive:true}); fs.writeFileSync('dist/robots.txt','User-agent: *\\nDisallow:\\n');\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
