@@ -11,7 +11,9 @@
     "db:migrate": "npx prisma migrate dev --name init_schema",
     "db:seed": "tsx prisma/seed.ts",
     "simulate": "tsx src/simulate.ts",
-    "test:e2e": "tsx src/test-phase9.ts"
+    "test:e2e": "tsx src/test-phase9.ts",
+    "postinstall": "prisma generate",
+    "vercel-build": "npx prisma generate && node -e \"require('fs').mkdirSync('dist', { recursive: true })\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
